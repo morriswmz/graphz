@@ -6,16 +6,27 @@ class DefaultNodeEncoder:
     
     def __init__(self):
         """
-        Creates an encoder that encodes nodes by their order of appearance.
+        Creates an encoder that encodes node names by their order of appearance.
         """
         self._node_id_map = {}
+        self._id_node_map = []
         self._cur_node_id = 0
 
     def encode(self, nn):
+        """
+        Encodes a node name.
+        """
         if nn not in self._node_id_map:
             self._node_id_map[nn] = self._cur_node_id
+            self._id_node_map.append(nn)
             self._cur_node_id += 1
         return self._node_id_map[nn]
+
+    def decode(self, id):
+        """
+        Decodes a node name.
+        """
+        return self._id_node_map[id]
 
     @property
     def count(self):
@@ -38,8 +49,8 @@ def from_edge_list(filename, weighted=True, directed=True, name=None):
         name = os.path.splitext(os.path.basename(filename))[0]
     with open(filename, 'r') as f:
         n_nodes, edges = parse_edge_list(f)
-        return GraphDataset(n_nodes=n_nodes, edges=edges, weighted=weighted,
-                            directed=directed, name=name)
+        return GraphDataset.from_edges(n_nodes=n_nodes, edges=edges, weighted=weighted,
+                                       directed=directed, name=name)
 
 def parse_edge_list(lines, node_encoder=DefaultNodeEncoder()):
     """
@@ -74,7 +85,7 @@ def parse_edge_list(lines, node_encoder=DefaultNodeEncoder()):
         else:
             w = 1.
         edges.append((na, nb, w))
-    return encoder.count, edges
+    return node_encoder.count, edges
     
 
 def from_adj_mat(filename, ignore_weights=False, as_undirected=False):

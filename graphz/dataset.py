@@ -597,15 +597,25 @@ class GraphDataset:
         Converts to networkx's graph.
         """
         if networkx_installed:
-            # TODO: attributes and labels
             if self.directed:
                 G = networkx.DiGraph()
             else:
                 G = networkx.Graph()
-            if self.weighted:
-                G.add_weighted_edges_from(self.get_edge_iter())
-            else:
-                G.add_edges_from(map(lambda e : (e[0], e[1]), self.get_edge_iter()))
+            # Add nodes
+            for i in range(self.n_nodes):
+                G.add_node(i)
+            if self._node_attributes is not None:
+                for i in range(self.n_nodes):
+                    G.nodes[i]['attributes'] = self._node_attributes[i]
+            if self._node_labels is not None:
+                for i in range(self.n_nodes):
+                    G.nodes[i]['label'] = self._node_labels[i]
+            # Add edges
+            for e in self.get_edge_iter(True):
+                if e[3] is not None:
+                    G.add_edge(e[0], e[1], weight=e[2], attributes=e[3])
+                else:
+                    G.add_edge(e[0], e[1], weight=e[2])
             G.name = self.name
             return G
         else:
