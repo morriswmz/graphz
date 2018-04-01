@@ -12,14 +12,14 @@ except ImportError:
 """
 Stores information of an edge in adjacency lists.
 """
-EdgeInfo = namedtuple('EdgeInfo', ['weight', 'attributes'])
+EdgeInfo = namedtuple('EdgeInfo', ['weight', 'data'])
 
 """
 Provides full information of a node.
 """
 NodeView = namedtuple('NodeView', ['id', 'out_edges', 'label', 'attributes'])
 
-# Represents an edge with unit weight and no attributes.
+# Represents an edge with unit weight and no data.
 UW_NA_EDGE_INFO = EdgeInfo(1, None) 
 
 def check_node_index(nid, n_nodes):
@@ -196,7 +196,7 @@ def enumerate_edges_undirected(adj_list, attributes=False):
             for nb, ei in l.items():
                 # Equality -> loops
                 if na <= nb:
-                    yield (na, nb, ei.weight, ei.attributes)
+                    yield (na, nb, ei.weight, ei.data)
     else:
         for na, l in enumerate(adj_list):
             for nb, ei in l.items():
@@ -217,7 +217,7 @@ def enumerate_edges_directed(adj_list, attributes=False):
     if attributes:
         for na, l in enumerate(adj_list):
             for nb, ei in l.items():
-                yield (na, nb, ei.weight, ei.attributes)
+                yield (na, nb, ei.weight, ei.data)
     else:
         for na, l in enumerate(adj_list):
             for nb, ei in l.items():
@@ -281,7 +281,8 @@ class GraphDataset:
            an edge pair.
         The supplied edge attributes are assumed to be immutable.
         Upon construction the adjacency list will be built.
-        The default parameters will create an empty graph.
+
+        Edge attributes and node attributes/labels should be immutable.
         """
         # Adjacency list
         # node_id -> {neighbor_id : (weight, attributes)}
@@ -327,10 +328,14 @@ class GraphDataset:
 
     @property
     def node_labels(self):
+        if self._node_labels is None:
+            raise AttributeError('No node label is available.')
         return ListView(self._node_labels)
 
     @property
     def node_attributes(self):
+        if self._node_attributes is None:
+            raise AttributeError('No node attribute is available.')
         return ListView(self._node_attributes)
 
     @property
@@ -503,7 +508,7 @@ class GraphDataset:
                 L = d * L * d.T
         return L
 
-    def subgraph(self, nodes_to_remove=None, edges_to_remove=None, validate=False, name=None):
+    def subgraph(self, nodes_to_remove=None, nodes_to_keep=None, edges_to_remove=None, validate=False, name=None):
         """
         Returns a new dataset constructed from the subgraph after removing
         specified nodes and edges.
@@ -512,39 +517,21 @@ class GraphDataset:
 
         Node attributes and labels will copied shallowly.
         
-        :param nodes_to_remove: Nodes to be removed.
+        :param nodes_to_remove: Nodes to be removed. Mutually exclusive with
+        nodes_to_keep.
+        :param nodes_to_keep: Nodes to be kept. Mutually exclusive with
+        nodes_to_remove.
         :param edges_to_remove: Edges to be removed.
         :param validate: When set to True, will raise an error if any of the
         node/edge to be removed does not exist at any removal step (this implies
         that duplicates will result in an error). 
         """
-        # Clones the adjacency list. Tuples storing the edge information are
-        # shallowly copied because they are assumed immutable.
-        adj_list = [x.copy() for x in self._adj_list]
+        if nodes_to_remove is not None and nodes_to_keep is not None:
+            raise ValueError('nodes_to_remove and nodes_to_keep are mutually exclusive.')
+        # Construct id map between old nodes and new nodes.
         n_nodes = self.n_nodes
-        if edges_to_remove is not None:
-            for e in edges_to_remove:
-                # Validate
-                if e[0] < 0 or e[0] >= n_nodes or e[1] not in adj_list[e[0]]:
-                    if validate:
-                        raise ValueError('Edge {}-{} does not exist.'.format(e[0], e[1]))
-                    else:
-                        continue
-                # Remove this edge
-                del adj_list[e[0]][e[1]]
-                # Do not forget self-loops
-                if not self.directed and e[0] != e[1]:
-                    del adj_list[e[1]][e[0]]
         if nodes_to_remove is not None:
-            # Validate first
-            if validate:
-                for n in nodes_to_remove:
-                    if n < 0 or n >= n_nodes:
-                        raise ValueError('Node id {} is out of range.'.format(n))
-            orig_len = len(nodes_to_remove)
-            nodes_to_remove = set(nodes_to_remove)
-            if validate and len(nodes_to_remove) != orig_len:
-                raise ValueError('Attempting to remove a node more than once.')
+            nodes_to_remove = self._process_nodes_input_for_subgraph(nodes_to_remove, validate)
             # Maps old nodes to new nodes
             new_id = 0
             node_map = [None] * n_nodes
@@ -554,29 +541,68 @@ class GraphDataset:
                     continue
                 node_map[i] = new_id
                 new_id += 1
-            # Update the adjacency list
-            new_n_nodes = n_nodes - len(nodes_to_remove)
-            for na in range(n_nodes):
-                if node_map[na] != -1:
-                    # Remove nodes if necessary and update the keys according to
-                    # the node id map
-                    adj_list[node_map[na]] = {node_map[nb]: ei for nb, ei in adj_list[na].items() if nb not in nodes_to_remove}
-            # Resize the list
-            adj_list = adj_list[:new_n_nodes]
+            n_nodes_remaining = n_nodes - len(nodes_to_remove)
+        elif nodes_to_keep is not None:
+            nodes_to_keep = self._process_nodes_input_for_subgraph(nodes_to_keep, validate)
+            # Maps old nodes to new nodes
+            node_map = [-1] * n_nodes
+            new_id = 0
+            for i in nodes_to_keep:
+                node_map[i] = new_id
+                new_id += 1
+            n_nodes_remaining = len(nodes_to_keep)
+        else:
+            n_nodes_remaining = n_nodes
+        # Construct the new adjacency list according to the node id map.        
+        if n_nodes_remaining == n_nodes:
+            # No node is removed.
+            adj_list = [x.copy() for x in self._adj_list]
+        else:
+            adj_list = [None] * n_nodes_remaining
+            for i in range(n_nodes):
+                if node_map[i] < 0:
+                    continue
+                new_dict = {}
+                for k, v in self._adj_list[i].items():
+                    if node_map[k] >= 0:
+                        new_dict[node_map[k]] = v
+                adj_list[node_map[i]] = new_dict
+        # Remove edges
+        # We have to keep in mind that the dictionary keys in adj_list have
+        # been adjusted.
+        if edges_to_remove is not None:
+            for e in edges_to_remove:
+                # Validate
+                if e[0] < 0 or e[0] >= n_nodes or e[1] not in self._adj_list[e[0]]:
+                    if validate:
+                        raise ValueError('Edge {}-{} does not exist in the original graph.'.format(e[0], e[1]))
+                    else:
+                        continue
+                # Remove this edge
+                # e[0] and e[1] correspond to old node ids
+                new_id_a = node_map[e[0]]
+                new_id_b = node_map[e[1]]
+                if new_id_a >= 0 and new_id_b >= 0:
+                    # Actually remove only if the this edge exists in the
+                    # subgraph.
+                    del adj_list[new_id_a][new_id_b]
+                    # Do not forget self-loops
+                    if not self.directed and new_id_a != new_id_b:
+                        del adj_list[new_id_b][new_id_a]
         # Create the new graph dataset
         if name is None:
             name = "Subgraph of " + self.name
         # Handle node attributes and labels
         # We will just do a shallow copy here
-        if nodes_to_remove is not None:
-            if self.node_attributes is not None:
-                node_attributes = [self.node_attributes[i] for i in range(n_nodes) if node_map[i] != -1]
+        if n_nodes_remaining != n_nodes:
+            if self._node_attributes is not None:
+                node_attributes = [self._node_attributes[i] for i in range(n_nodes) if node_map[i] != -1]
             else:
                 node_attributes = None
-            if self.node_labels is not None:
-                node_labels = [self.node_labels[i] for i in range(n_nodes) if node_map[i] != -1]
+            if self._node_labels is not None:
+                node_labels = [self._node_labels[i] for i in range(n_nodes) if node_map[i] != -1]
             else:
-                node_attributes = None
+                node_labels = None
         else:
             node_attributes = self._node_attributes
             node_labels = self._node_labels
@@ -585,6 +611,18 @@ class GraphDataset:
                           node_attributes=node_attributes,
                           node_labels=node_labels)
         return sg
+        
+    def _process_nodes_input_for_subgraph(self, nodes, validate):
+        # Validate first
+        if validate:
+            for n in nodes:
+                if n < 0 or n >= self.n_nodes:
+                    raise ValueError('Node id {} is out of range.'.format(n))
+        orig_len = len(nodes)
+        nodes = set(nodes)
+        if validate and len(nodes) != orig_len:
+            raise ValueError('Duplicated node ids are not allowed.')
+        return nodes
 
     def to_unweighted(self, name=None):
         """
@@ -596,7 +634,7 @@ class GraphDataset:
             # Convert to unweighted.
             adj_list = []
             for d in self._adj_list:
-                adj_list.append({k: EdgeInfo(1, ei.attributes) for k, ei in d.items()})
+                adj_list.append({k: EdgeInfo(1, ei.data) for k, ei in d.items()})
         else:
             # Nothing changed. Just a simple copy.
             adj_list = [x.copy() for x in self._adj_list]
@@ -647,4 +685,61 @@ class GraphDataset:
             self.notes
         )
 
+class MultiGraphDataset:
+    """
+    A dataset containing a collection of graphs. Suitable for experiments
+    involving many graphs such as graph classification/matching.
+    Meant to be immutable.
+    """
+    def __init__(self, graphs, labels=None, name='Graphs'):
+        """
+        Initializes a multi-graph dataset with a collection of graphs.
 
+        :param graphs: A list/iterator of graphs.
+        :param labels: A list of labels for the graphs.
+        """
+        self._graphs = list(graphs)
+        if labels is not None:
+            if len(labels) != len(self._graphs):
+                raise Exception('The length of label list must match that of the graph list.')
+        self._graph_labels = labels
+        self._n_classes = None
+        self._name = name
+    
+    @property
+    def name(self):
+        return self._name
+
+    @property
+    def n_graphs(self):
+        """
+        Retrieves the number of graphs.
+        """
+        return len(self._graphs)
+
+    @property
+    def n_classes(self):
+        """
+        Retrives the number of classes.
+        """
+        if self._graph_labels is None:
+            return 0
+        if self._n_classes is None:
+            self._n_classes = len(set(self._graph_labels))
+        return self._n_classes
+
+    @property
+    def labels(self):
+        return ListView(self._graph_labels)
+
+    def __len__(self):
+        return self.n_graphs
+
+    def __getitem__(self, key):
+        if self._graph_labels is not None:
+            return (self._graphs[key], self._graph_labels[key])
+        else:
+            return (self._graphs[key], None)
+
+    def summary(self):
+        return '{0}: n_graphs={1}'.format(self.name, self.n_graphs)
