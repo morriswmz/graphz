@@ -1,4 +1,5 @@
 import numpy as np
+from scipy import sparse as sp
 import copy
 from collections import namedtuple
 from graphz.view import DictionaryView, ListView, AdjacencyListView
@@ -224,9 +225,9 @@ def enumerate_edges_directed(adj_list, attributes=False):
 
 class GraphDataset:
     """
-    Represents a graph dataset.
-    Meant to be immutable so do not modify any of its data even though you can
-    do that.
+    Represents a graph dataset. Suitable for experiments using a single graph,
+    such as node embedding and link prediction.
+    Meant to be immutable.
 
     Graph data are stored using the adjacency list. Therefore it is not memory
     efficient for dense graphs. Both node attributes and edge attributes are
@@ -462,11 +463,14 @@ class GraphDataset:
                     n_loops += 1
             return (n - n_loops) // 2 + n_loops
 
-    def get_adj_matrix(self):
+    def get_adj_matrix(self, sparse=False):
         """
         Generates the dense adjacency matrix.
         """
-        A = np.zeros((self.n_nodes, self.n_nodes))
+        if sparse:
+            A = sp.dok_matrix((self.n_nodes, self.n_nodes))
+        else:
+            A = np.zeros((self.n_nodes, self.n_nodes))
         if self.directed:
             for e in self.get_edge_iter():
                 A[e[0], e[1]] = e[2]
@@ -474,19 +478,29 @@ class GraphDataset:
             for e in self.get_edge_iter():
                 A[e[0], e[1]] = e[2]
                 A[e[1], e[0]] = e[2]
-        return A
+        if sparse:
+            return A.tocsr()
+        else:
+            return A
 
-    def get_laplacian(self, normalize=False):
+    def get_laplacian(self, sparse=False, normalize=False):
         """
         Computes the Laplacian matrix.
         """
         d = np.array(self.deg_list)
-        L = np.diag(d) - self.get_adj_matrix()
-        if normalize:
-            if np.any(d == 0):
-                raise Exception('Cannot have any isolated nodes.')
-            d = np.reshape(1.0 / np.sqrt(d), (-1, 1))
-            L = d * L * d.T
+        if normalize and np.any(d == 0):
+            raise Exception('Cannot have any isolated nodes.')
+        if sparse:
+            D = sp.diags(d)
+            L = D - self.get_adj_matrix(sparse=True)
+            if normalize:
+                D = sp.diags(np.reciprocal(np.sqrt(d)))
+                L = D @ L @ D
+        else:
+            L = np.diag(d) - self.get_adj_matrix()
+            if normalize:
+                d = np.reshape(1.0 / np.sqrt(d), (-1, 1))
+                L = d * L * d.T
         return L
 
     def subgraph(self, nodes_to_remove=None, edges_to_remove=None, validate=False, name=None):
