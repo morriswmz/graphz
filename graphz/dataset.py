@@ -595,14 +595,13 @@ class GraphDataset:
         # Handle node attributes and labels
         # We will just do a shallow copy here
         if n_nodes_remaining != n_nodes:
-            if self._node_attributes is not None:
-                node_attributes = [self._node_attributes[i] for i in range(n_nodes) if node_map[i] != -1]
-            else:
-                node_attributes = None
-            if self._node_labels is not None:
-                node_labels = [self._node_labels[i] for i in range(n_nodes) if node_map[i] != -1]
-            else:
-                node_labels = None
+            node_attributes = [None] * n_nodes_remaining
+            node_labels = [None] * n_nodes_remaining
+            for i in range(n_nodes):
+                if node_map[i] < 0:
+                    continue
+                node_attributes[node_map[i]] = self._node_attributes[i]
+                node_labels[node_map[i]] = self._node_attributes[i]
         else:
             node_attributes = self._node_attributes
             node_labels = self._node_labels
