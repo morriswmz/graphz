@@ -81,8 +81,4 @@ class AdjacencyListView(ListView):
     def __hash__(self):
         # We make it unhashable here.
         return None
-
-
-
-
     
