@@ -1,7 +1,6 @@
 from graphz.dataset import GraphDataset
 from graphz.utils import reservoir_sampling
 import numpy as np
-import itertools
 import random
 import warnings
 
@@ -42,10 +41,11 @@ class NegativeEdgeSampler(EdgeSampler):
         Samples disconnected pairs (no self loops will be included).
         """
         # Precheck
-        if n_samples > self.graph.n_max_edges - self.graph.n_edges:
+        max_n_neg = self.graph.get_max_n_edges()
+        if n_samples > max_n_neg - self.graph.n_edges:
             raise ValueError('Too many negative samples requested.')
         # Check the network sparsity level
-        sparsity_level = (self.graph.n_edges + n_samples) / self.graph.n_max_edges
+        sparsity_level = (self.graph.n_edges + n_samples) / max_n_neg
         if sparsity_level > 0.05:
             warnings.warn('Graph is not sparse enough. Random sampling may be slow.')
         x = []

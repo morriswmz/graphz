@@ -29,7 +29,7 @@ def check_node_index(nid, n_nodes):
 def merge_edge(na, nb, eia, eib):
     pass
 
-def build_adj_list_undirected(n_nodes, edges, weighted=False, attributes=False):
+def build_adj_list_undirected(n_nodes, edges, weighted=False, has_data=False):
     """
     Builds a adjacency list from an edge list for an undirected graph.
 
@@ -37,30 +37,30 @@ def build_adj_list_undirected(n_nodes, edges, weighted=False, attributes=False):
     
     :param edges: Collection of edges. Each item must have the following
     structure: (na, nb[, w, attr]). When weighted is True, w must be present.
-    When attributes is True, both w and attr must be present (even if w will
+    When has_data is True, both w and attr must be present (even if w will
     be ignored if weighted is False). Examples:
-    1. weighted=False, attributes=False
+    1. weighted=False, has_data=False
         edges = [(0, 1), (0, 2), (1, 2)]
-    2. weighted=True, attributes=False
+    2. weighted=True, has_data=False
         edges = [(0, 1, 0.2), (0, 2, 0.4), (1, 2, 0.3)]
-    3. weighted=False, attributes=True
+    3. weighted=False, has_data=True
         edges = [(0, 1, 1, 'e1'), (0, 2, 1, 'e2'), (1, 2, 1, 'e3')]
-    4. weighted=True, attributes=True
+    4. weighted=True, has_data=True
         edges = [(0, 1, 0.2, 'e1'), (0, 2, 0.4, 'e2'), (1, 2, 0.3, 'e3')]
-    Note: when attributes is True, edges cannot contain duplicate definitions.
+    Note: when has_data is True, edges cannot contain duplicate definitions.
     
     :param weighted: Specifies whether the edges have weights.
 
-    :param attributes: Specified whether the edges have attributed.
+    :param has_data: Specified whether the edges have data.
 
     :return: The constructed adjacency list.
     """
     adj_list = [{} for i in range(n_nodes)]
     if weighted:
-        if attributes:
-            # Attributes provided.
+        if has_data:
+            # Data provided.
             # If an edge pair appear multiple times, an error will be raised
-            # because we do not know how to merge the attributes.
+            # because we do not know how to merge the data.
             for e in edges:
                 na, nb, w, attr = e
                 check_node_index(na, n_nodes)
@@ -68,12 +68,12 @@ def build_adj_list_undirected(n_nodes, edges, weighted=False, attributes=False):
                 # For undirected graphs, adj_list[na][nb] and adj_list[nb][na]
                 # are updated simultaneously. We only need to check one of them.
                 if nb in adj_list[na]:
-                    raise ValueError('Cannot merge duplicate edge definitions for the edge {}->{} when attributes are provided.'.format(na, nb))
+                    raise ValueError('Cannot merge duplicate edge definitions for the edge {}->{} when data are provided.'.format(na, nb))
                 ei = EdgeInfo(w, attr)
                 adj_list[na][nb] = ei
                 adj_list[nb][na] = ei
         else:
-            # No attributes provided.
+            # No data provided.
             # If an edge pair appears multiple times, we combine them by summing
             # their weights.
             for e in edges:
@@ -87,18 +87,18 @@ def build_adj_list_undirected(n_nodes, edges, weighted=False, attributes=False):
                     adj_list[na][nb] = EdgeInfo(w, None)
                 adj_list[nb][na] = adj_list[na][nb]
     else:
-        if attributes:
+        if has_data:
             for e in edges:
                 na, nb, _w, attr = e
                 check_node_index(na, n_nodes)
                 check_node_index(nb, n_nodes)
                 if nb in adj_list[na]:
-                    raise ValueError('Cannot merge duplicate edge definitions for the edge {}->{} when attributes are provided.'.format(na, nb))
+                    raise ValueError('Cannot merge duplicate edge definitions for the edge {}->{} when data are provided.'.format(na, nb))
                 ei = EdgeInfo(1, attr)
                 adj_list[na][nb] = ei
                 adj_list[nb][na] = ei
         else:
-            # When no node attributes are present, duplications are ignored for
+            # When no edge data are present, duplications are ignored for
             # undirected graphs.
             for e in edges:
                 na, nb = e[0], e[1]
@@ -108,7 +108,7 @@ def build_adj_list_undirected(n_nodes, edges, weighted=False, attributes=False):
                 adj_list[nb][na] = UW_NA_EDGE_INFO
     return adj_list
 
-def build_adj_list_directed(n_nodes, edges, weighted=False, attributes=False):
+def build_adj_list_directed(n_nodes, edges, weighted=False, has_data=False):
     """
     Builds a adjacency list from an edge list for a directed graph.
 
@@ -116,39 +116,39 @@ def build_adj_list_directed(n_nodes, edges, weighted=False, attributes=False):
     
     :param edges: Collection of edges. Each item must have the following
     structure: (na, nb[, w, attr]). When weighted is True, w must be present.
-    When attributes is True, both w and attr must be present (even if w will
+    When has_data is True, both w and attr must be present (even if w will
     be ignored if weighted is False). Examples:
-    1. weighted=False, attributes=False
+    1. weighted=False, has_data=False
         edges = [(0, 1), (0, 2), (1, 2)]
-    2. weighted=True, attributes=False
+    2. weighted=True, has_data=False
         edges = [(0, 1, 0.2), (0, 2, 0.4), (1, 2, 0.3)]
-    3. weighted=False, attributes=True
+    3. weighted=False, has_data=True
         edges = [(0, 1, 1, 'e1'), (0, 2, 1, 'e2'), (1, 2, 1, 'e3')]
-    4. weighted=True, attributes=True
+    4. weighted=True, has_data=True
         edges = [(0, 1, 0.2, 'e1'), (0, 2, 0.4, 'e2'), (1, 2, 0.3, 'e3')]
-    Note: when attributes is True, edges cannot contain duplicate definitions.
+    Note: when has_data is True, edges cannot contain duplicate definitions.
     
     :param weighted: Specifies whether the edges have weights.
 
-    :param attributes: Specified whether the edges have attributed.
+    :param has_data: Specified whether the edges have data.
 
     :return: The constructed adjacency list.
     """
     adj_list = [{} for i in range(n_nodes)]
     if weighted:
-        if attributes:
-            # Attributes provided.
+        if has_data:
+            # Data provided.
             # If an edge pair appear multiple times, an error will be raised
-            # because we do not know how to merge the attributes.
+            # because we do not know how to merge the data.
             for e in edges:
                 na, nb, w, attr = e
                 check_node_index(na, n_nodes)
                 check_node_index(nb, n_nodes)
                 if nb in adj_list[na]:
-                    raise ValueError('Cannot merge duplicate edge definitions for the edge {}->{} when attributes are provided.'.format(na, nb))
+                    raise ValueError('Cannot merge duplicate edge definitions for the edge {}->{} when data are provided.'.format(na, nb))
                 adj_list[na][nb] = EdgeInfo(w, attr)
         else:
-            # No attributes provided.
+            # No data provided.
             # If an edge pair appears multiple times, we combine them by summing
             # their weights.
             for e in edges:
@@ -161,16 +161,16 @@ def build_adj_list_directed(n_nodes, edges, weighted=False, attributes=False):
                 else:
                     adj_list[na][nb] = EdgeInfo(w, None)
     else:
-        if attributes:
+        if has_data:
             for e in edges:
                 na, nb, _w, attr = e
                 check_node_index(na, n_nodes)
                 check_node_index(nb, n_nodes)
                 if na in adj_list[nb]:
-                    raise ValueError('Cannot merge duplicate edge definitions for the edge {}->{} when attributes are provided.'.format(na, nb))
+                    raise ValueError('Cannot merge duplicate edge definitions for the edge {}->{} when data are provided.'.format(na, nb))
                 adj_list[na][nb] = EdgeInfo(1, attr)
         else:
-            # When no node attributes are present, duplications are ignored for
+            # When no edge data are present, duplications are ignored for
             # undirected graphs.
             for e in edges:
                 na, nb = e[0], e[1]
@@ -179,7 +179,7 @@ def build_adj_list_directed(n_nodes, edges, weighted=False, attributes=False):
                 adj_list[na][nb] = UW_NA_EDGE_INFO
     return adj_list
 
-def enumerate_edges_undirected(adj_list, attributes=False):
+def enumerate_edges_undirected(adj_list, data=False):
     """
     Creates a generator that iterative through all the edges based on the give
     adjacency list, assuming an undirected graph. Each item will be a tuple
@@ -187,11 +187,11 @@ def enumerate_edges_undirected(adj_list, attributes=False):
 
     :param adj_list: Adjacency list.
     
-    :param attributes: If set to true, edge attributes will be included.
+    :param data: If set to true, edge data will be included.
     """
     # For undirected graphs, we do not want to record both (a, b, w[, attr])
     # and (b, a, w[, attr]).
-    if attributes:
+    if data:
         for na, l in enumerate(adj_list):
             for nb, ei in l.items():
                 # Equality -> loops
@@ -204,7 +204,7 @@ def enumerate_edges_undirected(adj_list, attributes=False):
                 if na <= nb:
                     yield (na, nb, ei.weight)
 
-def enumerate_edges_directed(adj_list, attributes=False):
+def enumerate_edges_directed(adj_list, data=False):
     """
     Creates a generator that iterative through all the edges based on the give
     adjacency list, assuming a directed graph.  Each item will be a tuple
@@ -212,9 +212,9 @@ def enumerate_edges_directed(adj_list, attributes=False):
 
     :param adj_list: Adjacency list.
     
-    :param attributes: If set to true, edge attributes will be included.
+    :param data: If set to true, edge data will be included.
     """
-    if attributes:
+    if data:
         for na, l in enumerate(adj_list):
             for nb, ei in l.items():
                 yield (na, nb, ei.weight, ei.data)
@@ -230,7 +230,7 @@ class GraphDataset:
     Meant to be immutable.
 
     Graph data are stored using the adjacency list. Therefore it is not memory
-    efficient for dense graphs. Both node attributes and edge attributes are
+    efficient for dense graphs. Both node attributes and edge data are
     supported.
 
     Note: not suited for dense graphs.
@@ -249,14 +249,19 @@ class GraphDataset:
         self._weighted = weighted
         self._adj_list = adj_list
         # Node attributes
+        n_nodes = len(adj_list)
         if node_attributes is not None:
-            if len(node_attributes) != len(adj_list):
+            if len(node_attributes) != n_nodes:
                 raise ValueError('The length of the node attribute list must be equal to the number of nodes.')
+        else:
+            node_attributes = [None] * n_nodes
         self._node_attributes = node_attributes
         # Node labels
         if node_labels is not None:
-            if len(node_labels) != len(adj_list):
+            if len(node_labels) != n_nodes:
                 raise ValueError('The length of the node label list must be equal to the number of nodes.')
+        else:
+            node_labels = [None] * n_nodes
         self._node_labels = node_labels
         self._init_cache_members()
     
@@ -269,7 +274,7 @@ class GraphDataset:
 
     @classmethod
     def from_edges(cls, n_nodes, edges, weighted=False, directed=False,
-                   has_edge_attrs=False, **kwargs):
+                   has_edge_data=False, **kwargs):
         """
         Creates a simple graph dataset from the given edge list.
 
@@ -279,19 +284,19 @@ class GraphDataset:
         2. A numpy array, where each row represents an edge pair.
         3. An iterator, where each item is either a list or a tuple representing
            an edge pair.
-        The supplied edge attributes are assumed to be immutable.
+        The supplied edge data are assumed to be immutable.
         Upon construction the adjacency list will be built.
 
-        Edge attributes and node attributes/labels should be immutable.
+        Edge data and node attributes/labels should be immutable.
         """
         # Adjacency list
-        # node_id -> {neighbor_id : (weight, attributes)}
+        # node_id -> {neighbor_id : (weight, data)}
         # For undirected graphs, weights are always ones.
         # Each element in the adjacency list is a dictionary.
         if directed:
-            adj_list = build_adj_list_directed(n_nodes, edges, weighted, has_edge_attrs)
+            adj_list = build_adj_list_directed(n_nodes, edges, weighted, has_edge_data)
         else:
-            adj_list = build_adj_list_undirected(n_nodes, edges, weighted, has_edge_attrs)
+            adj_list = build_adj_list_undirected(n_nodes, edges, weighted, has_edge_data)
         return cls(adj_list=adj_list, weighted=weighted, directed=directed, **kwargs)
 
     @property
@@ -328,14 +333,10 @@ class GraphDataset:
 
     @property
     def node_labels(self):
-        if self._node_labels is None:
-            raise AttributeError('No node label is available.')
         return ListView(self._node_labels)
 
     @property
     def node_attributes(self):
-        if self._node_attributes is None:
-            raise AttributeError('No node attribute is available.')
         return ListView(self._node_attributes)
 
     @property
@@ -352,20 +353,6 @@ class GraphDataset:
         """
         return self.compute_n_edges()
 
-    @property
-    def n_max_edges(self, including_loops=False):
-        """
-        Returns the maximum number of edges.
-        """
-        n_nodes = self.n_nodes
-        if self.directed:
-            n = n_nodes * (n_nodes - 1)
-        else:
-            n = n_nodes * (n_nodes - 1) // 2
-        if including_loops:
-            n += n_nodes
-        return n
-    
     @property
     def weighted(self):
         """
@@ -430,15 +417,28 @@ class GraphDataset:
             attr = None if self._node_attributes is None else self._node_attributes[key] 
             return NodeView(key, DictionaryView(self._adj_list[key]), label, attr)
 
-    def get_edge_iter(self, attributes=False):
+    def get_n_max_edges(self, including_loops=False):
+        """
+        Returns the maximum number of edges.
+        """
+        n_nodes = self.n_nodes
+        if self.directed:
+            n = n_nodes * (n_nodes - 1)
+        else:
+            n = n_nodes * (n_nodes - 1) // 2
+        if including_loops:
+            n += n_nodes
+        return n
+
+    def get_edge_iter(self, data=False):
         """
         Returns a generator of edges (list of triplets).
         We return a generator here to avoid storing the whole edge list.
         """
         if self._directed:
-            return enumerate_edges_directed(self._adj_list, attributes)
+            return enumerate_edges_directed(self._adj_list, data)
         else:
-            return enumerate_edges_undirected(self._adj_list, attributes)
+            return enumerate_edges_undirected(self._adj_list, data)
 
     def get_node_iter(self):
         """
@@ -492,17 +492,17 @@ class GraphDataset:
         """
         Computes the Laplacian matrix.
         """
-        d = np.array(self.deg_list)
-        if normalize and np.any(d == 0):
-            raise Exception('Cannot have any isolated nodes.')
         if sparse:
-            D = sp.diags(d)
-            L = D - self.get_adj_matrix(sparse=True)
+            A = self.get_adj_matrix(True)
+            d = np.asarray(A.sum(1)).squeeze()
+            L = sp.diags(d) - A
             if normalize:
                 D = sp.diags(np.reciprocal(np.sqrt(d)))
                 L = D @ L @ D
         else:
-            L = np.diag(d) - self.get_adj_matrix()
+            A = self.get_adj_matrix(False)
+            d = A.sum(1)
+            L = np.diag(d) - A
             if normalize:
                 d = np.reshape(1.0 / np.sqrt(d), (-1, 1))
                 L = d * L * d.T
@@ -698,10 +698,12 @@ class MultiGraphDataset:
         :param graphs: A list/iterator of graphs.
         :param labels: A list of labels for the graphs.
         """
-        self._graphs = list(graphs)
+        self._graphs = list(graphs) # Ensure a list here.
         if labels is not None:
             if len(labels) != len(self._graphs):
                 raise Exception('The length of label list must match that of the graph list.')
+        else:
+            labels = [None] * len(self._graphs)
         self._graph_labels = labels
         self._n_classes = None
         self._name = name
@@ -729,6 +731,10 @@ class MultiGraphDataset:
         return self._n_classes
 
     @property
+    def graphs(self):
+        return ListView(self._graphs)
+
+    @property
     def labels(self):
         return ListView(self._graph_labels)
 
@@ -737,9 +743,9 @@ class MultiGraphDataset:
 
     def __getitem__(self, key):
         if self._graph_labels is not None:
-            return (self._graphs[key], self._graph_labels[key])
+            return self._graphs[key], self._graph_labels[key]
         else:
-            return (self._graphs[key], None)
+            return self._graphs[key], None
 
     def summary(self):
         return '{0}: n_graphs={1}'.format(self.name, self.n_graphs)
