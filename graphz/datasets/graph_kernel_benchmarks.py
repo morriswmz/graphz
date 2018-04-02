@@ -3,6 +3,7 @@ from graphz.dataset import GraphDataset, MultiGraphDataset
 from graphz.utils import download_file
 import os
 import numpy as np
+from tqdm import tqdm
 from collections import namedtuple
 
 # Benchmark Data Sets for Graph Kernels
@@ -113,15 +114,20 @@ def _load(dataset_name, data_dir=None, download_url=None):
             edge_data = [LabelAttrTuple(edge_labels[i], edge_attributes[i]) for i in range(len(edges))]
 
     # Load graph indicators
+    graph_indicators = [[] for i in range(n_graphs)]
+    n_nodes_total = 0
     with open(graph_indicator_filename, 'r') as f:
         # Convert to zero-based indexing.
-        graph_indicators = np.array([int(l) - 1 for l in f])
+        for i, l in enumerate(f):
+            cur_graph_id = int(l) - 1
+            graph_indicators[cur_graph_id].append(i)
+            n_nodes_total += 1
 
     # Load node labels
     if os.path.exists(node_label_filename):
         with open(node_label_filename, 'r') as f:
             node_labels = [int(l) for l in f]
-        if len(node_labels) != len(graph_indicators):
+        if len(node_labels) != n_nodes_total:
             raise Exception('The length of the node label list does not match the number of nodes.')
     else:
         node_labels = None
@@ -130,28 +136,28 @@ def _load(dataset_name, data_dir=None, download_url=None):
     if os.path.exists(node_attributes_filename):
         with open(node_attributes_filename, 'r') as f:
             node_attributes = [tuple(map(float, l.split(','))) for l in f]
-        if len(node_attributes) != len(graph_indicators):
+        if len(node_attributes) != n_nodes_total:
             raise Exception('The length of the node attribute list does not match the number of nodes.')
     else:
         node_attributes = None
 
     # Construct the full graph
     if edge_data is None:
-        g = GraphDataset.from_edges(n_nodes=len(graph_indicators),
+        g = GraphDataset.from_edges(n_nodes=n_nodes_total,
             edges=edges, weighted=False, directed=False,
             node_labels=node_labels, node_attributes=node_attributes)
     else:
         # All graphs are undirected
         zipped = filter(lambda t : t[0][0] <= t[0][1], zip(edges, edge_data))
         edge_iter = map(lambda t: (t[0][0], t[0][1], 1, t[1]), zipped)
-        g = GraphDataset.from_edges(n_nodes=len(graph_indicators),
+        g = GraphDataset.from_edges(n_nodes=n_nodes_total,
             edges=edge_iter, weighted=False, directed=False, has_edge_data=True,
             node_labels=node_labels, node_attributes=node_attributes)
-    
-    # Extract subgraphs
+
     graphs = [None] * n_graphs
-    for i in range(n_graphs):
-        graphs[i] = g.subgraph(nodes_to_keep=np.nonzero(graph_indicators == i)[0], name=dataset_name + '-' + str(i))
+    for i in tqdm(range(n_graphs)):
+        graphs[i] = g.subgraph(nodes_to_keep=graph_indicators[i],
+                               name=dataset_name + '-' + str(i + 1))
     return MultiGraphDataset(graphs, graph_labels, dataset_name)
 
 def load_mutag(data_dir=None):
@@ -198,4 +204,12 @@ def load_mutag(data_dir=None):
       energies and hydrophobicity. J. Med. Chem. 34(2):786-797 (1991).
     """
     return _load('MUTAG', data_dir=data_dir, download_url=r'https://ls11-www.cs.uni-dortmund.de/people/morris/graphkerneldatasets/MUTAG.zip')
-    
+
+def load_enzymes(data_dir=None):
+    return _load('ENZYMES', data_dir=data_dir, download_url=r'https://ls11-www.cs.uni-dortmund.de/people/morris/graphkerneldatasets/ENZYMES.zip')
+  
+def load_reddit_binary(data_dir=None):
+    return _load('REDDIT-BINARY', data_dir=data_dir, download_url=r'https://ls11-www.cs.uni-dortmund.de/people/morris/graphkerneldatasets/REDDIT-BINARY.zip')
+  
+def load_reddit_multi_12k(data_dir=None):
+    return _load('REDDIT-MULTI-12K', data_dir=data_dir, download_url=r'https://ls11-www.cs.uni-dortmund.de/people/morris/graphkerneldatasets/REDDIT-MULTI-12K.zip')

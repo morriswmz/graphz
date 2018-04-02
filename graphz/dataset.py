@@ -253,24 +253,12 @@ class GraphDataset:
         if node_attributes is not None:
             if len(node_attributes) != n_nodes:
                 raise ValueError('The length of the node attribute list must be equal to the number of nodes.')
-        else:
-            node_attributes = [None] * n_nodes
-        self._node_attributes = node_attributes
+            self._node_attributes = node_attributes
         # Node labels
         if node_labels is not None:
             if len(node_labels) != n_nodes:
                 raise ValueError('The length of the node label list must be equal to the number of nodes.')
-        else:
-            node_labels = [None] * n_nodes
-        self._node_labels = node_labels
-        self._init_cache_members()
-    
-    def _init_cache_members(self):
-        # Degree list
-        self._deg_list = None
-        self._in_deg_list = None
-        # Loop detection
-        self._has_self_loops = None
+            self._node_labels = node_labels
 
     @classmethod
     def from_edges(cls, n_nodes, edges, weighted=False, directed=False,
@@ -326,18 +314,29 @@ class GraphDataset:
         Retrieves the out degree list.
         Do not modify.
         """
-        if self._deg_list is None:
+        try:
+            deg_list = self._deg_list
+        except AttributeError:
             # Compute on demand.
-            self._deg_list = [len(l) for l in self._adj_list]
-        return ListView(self._deg_list)
+            deg_list = [len(l) for l in self._adj_list]
+            self._deg_list = deg_list
+        return ListView(deg_list)
 
     @property
     def node_labels(self):
-        return ListView(self._node_labels)
+        try:
+            node_labels = self._node_labels
+        except AttributeError:
+            raise Exception('No node labels are available.')
+        return ListView(node_labels)
 
     @property
     def node_attributes(self):
-        return ListView(self._node_attributes)
+        try:
+            node_attributes = self._node_attributes
+        except AttributeError:
+            raise Exception('No node attributes are available.')
+        return ListView(node_attributes)
 
     @property
     def n_nodes(self):
@@ -372,13 +371,16 @@ class GraphDataset:
         """
         Returns if the graph has loop(s).
         """
-        if self._has_self_loops is None:
+        try:
+            has_self_loops = self._has_self_loops
+        except AttributeError:
             for i, l in enumerate(self.adj_list):
                 if i in l:
-                    self._has_self_loops = True
+                    has_self_loops = True
                     break
-            self._has_self_loops = False
-        return self._has_self_loops
+            has_self_loops = False
+            self._has_self_loops = has_self_loops
+        return has_self_loops
 
     def __getstate__(self):
         return {
@@ -397,7 +399,6 @@ class GraphDataset:
         self._adj_list = state['adj_list']
         self._node_labels = state['node_labels']
         self._node_attributes = state['node_attributes']
-        self._init_cache_members()
 
     def __getitem__(self, key):
         """
@@ -413,8 +414,14 @@ class GraphDataset:
             else:
                 return None
         else:
-            label = None if self._node_labels is None else self._node_labels[key]
-            attr = None if self._node_attributes is None else self._node_attributes[key] 
+            try:
+                label = self._node_labels[key]
+            except AttributeError:
+                label = None
+            try:
+                attr = self._node_attributes[key]
+            except AttributeError:
+                attr = None
             return NodeView(key, DictionaryView(self._adj_list[key]), label, attr)
 
     def get_n_max_edges(self, including_loops=False):
@@ -534,10 +541,9 @@ class GraphDataset:
             nodes_to_remove = self._process_nodes_input_for_subgraph(nodes_to_remove, validate)
             # Maps old nodes to new nodes
             new_id = 0
-            node_map = [None] * n_nodes
+            node_map = {}
             for i in range(n_nodes):
                 if i in nodes_to_remove:
-                    node_map[i] = -1
                     continue
                 node_map[i] = new_id
                 new_id += 1
@@ -545,7 +551,7 @@ class GraphDataset:
         elif nodes_to_keep is not None:
             nodes_to_keep = self._process_nodes_input_for_subgraph(nodes_to_keep, validate)
             # Maps old nodes to new nodes
-            node_map = [-1] * n_nodes
+            node_map = {}
             new_id = 0
             for i in nodes_to_keep:
                 node_map[i] = new_id
@@ -560,11 +566,11 @@ class GraphDataset:
         else:
             adj_list = [None] * n_nodes_remaining
             for i in range(n_nodes):
-                if node_map[i] < 0:
+                if i not in node_map:
                     continue
                 new_dict = {}
                 for k, v in self._adj_list[i].items():
-                    if node_map[k] >= 0:
+                    if k in node_map:
                         new_dict[node_map[k]] = v
                 adj_list[node_map[i]] = new_dict
         # Remove edges
@@ -594,21 +600,36 @@ class GraphDataset:
             name = "Subgraph of " + self.name
         # Handle node attributes and labels
         # We will just do a shallow copy here
-        if n_nodes_remaining != n_nodes:
-            node_attributes = [None] * n_nodes_remaining
-            node_labels = [None] * n_nodes_remaining
-            for i in range(n_nodes):
-                if node_map[i] < 0:
-                    continue
-                node_attributes[node_map[i]] = self._node_attributes[i]
-                node_labels[node_map[i]] = self._node_attributes[i]
-        else:
+        try:
             node_attributes = self._node_attributes
+        except AttributeError:
+            node_attributes = None
+        try:
             node_labels = self._node_labels
+        except AttributeError:
+            node_labels = None
+        if n_nodes_remaining != n_nodes:
+            if node_attributes is not None:
+                new_node_attributes = [None] * n_nodes_remaining
+                for old_i, new_i in node_map.items():
+                    new_node_attributes[new_i] = node_attributes[old_i]
+            else:
+                new_node_attributes = None
+            
+            if node_labels is not None:
+                new_node_labels = [None] * n_nodes_remaining
+                for old_i, new_i in node_map.items():
+                    new_node_labels[new_i] = node_labels[old_i]
+            else:
+                new_node_labels = None
+        else:
+            new_node_attributes = node_attributes
+            new_node_labels = node_labels
+        
         sg = GraphDataset(adj_list=adj_list, weighted=self.weighted,
                           directed=self.directed, name=name,
-                          node_attributes=node_attributes,
-                          node_labels=node_labels)
+                          node_attributes=new_node_attributes,
+                          node_labels=new_node_labels)
         return sg
         
     def _process_nodes_input_for_subgraph(self, nodes, validate):
