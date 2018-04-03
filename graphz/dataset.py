@@ -1,7 +1,7 @@
 import numpy as np
 from scipy import sparse as sp
 import copy
-from collections import namedtuple
+from collections import namedtuple, defaultdict
 from graphz.view import DictionaryView, ListView, AdjacencyListView
 try:
     import networkx
@@ -538,68 +538,138 @@ class GraphDataset:
         # Construct id map between old nodes and new nodes.
         n_nodes = self.n_nodes
         if nodes_to_remove is not None:
-            nodes_to_remove = self._process_nodes_input_for_subgraph(nodes_to_remove, validate)
-            # Maps old nodes to new nodes
-            new_id = 0
-            node_map = {}
-            for i in range(n_nodes):
-                if i in nodes_to_remove:
-                    continue
-                node_map[i] = new_id
-                new_id += 1
-            n_nodes_remaining = n_nodes - len(nodes_to_remove)
+            node_map = self._sg_build_node_map_exclusive(nodes_to_remove, validate)
         elif nodes_to_keep is not None:
-            nodes_to_keep = self._process_nodes_input_for_subgraph(nodes_to_keep, validate)
-            # Maps old nodes to new nodes
-            node_map = {}
-            new_id = 0
-            for i in nodes_to_keep:
-                node_map[i] = new_id
-                new_id += 1
-            n_nodes_remaining = len(nodes_to_keep)
+            node_map = self._sg_build_node_map_inclusive(nodes_to_keep, validate)
         else:
-            n_nodes_remaining = n_nodes
-        # Construct the new adjacency list according to the node id map.        
-        if n_nodes_remaining == n_nodes:
-            # No node is removed.
-            adj_list = [x.copy() for x in self._adj_list]
-        else:
-            adj_list = [None] * n_nodes_remaining
-            for i in range(n_nodes):
-                if i not in node_map:
-                    continue
-                new_dict = {}
-                for k, v in self._adj_list[i].items():
-                    if k in node_map:
-                        new_dict[node_map[k]] = v
-                adj_list[node_map[i]] = new_dict
+            node_map = None
+        # Construct the new adjacency list according to the node id map.
+        adj_list = self._sg_build_new_adj_list(node_map)
         # Remove edges
-        # We have to keep in mind that the dictionary keys in adj_list have
-        # been adjusted.
-        if edges_to_remove is not None:
-            for e in edges_to_remove:
-                # Validate
-                if e[0] < 0 or e[0] >= n_nodes or e[1] not in self._adj_list[e[0]]:
-                    if validate:
-                        raise ValueError('Edge {}-{} does not exist in the original graph.'.format(e[0], e[1]))
-                    else:
-                        continue
-                # Remove this edge
-                # e[0] and e[1] correspond to old node ids
-                new_id_a = node_map[e[0]]
-                new_id_b = node_map[e[1]]
-                if new_id_a >= 0 and new_id_b >= 0:
-                    # Actually remove only if the this edge exists in the
-                    # subgraph.
-                    del adj_list[new_id_a][new_id_b]
-                    # Do not forget self-loops
-                    if not self.directed and new_id_a != new_id_b:
-                        del adj_list[new_id_b][new_id_a]
+        self._sg_remove_edges(adj_list, node_map, edges_to_remove, validate)
         # Create the new graph dataset
         if name is None:
             name = "Subgraph of " + self.name
         # Handle node attributes and labels
-        # We will just do a shallow copy here
+        new_node_attributes, new_node_labels = self._sg_slice_node_data(node_map)
+        sg = GraphDataset(adj_list=adj_list, weighted=self.weighted,
+                          directed=self.directed, name=name,
+                          node_attributes=new_node_attributes,
+                          node_labels=new_node_labels)
+        return sg
+
+    def _sg_build_node_map_inclusive(self, nodes_to_keep, validate):
+        """
+        Returns a map between the set of original ids of the remaining nodes in
+        the original graph and their new ids.
+        """
+        n_nodes = self.n_nodes
+        new_id = 0
+        node_map = {}
+        for n in nodes_to_keep:
+            if n in node_map:
+                if validate:
+                    raise ValueError('Attempting to keep a node twice.')
+                continue
+            if n < 0 or n >= n_nodes:
+                if validate:
+                    raise ValueError('Node id {} is out of bounds.'.format(n))
+                continue
+            node_map[n] = new_id
+            new_id += 1
+        return node_map
+
+    def _sg_build_node_map_exclusive(self, nodes_to_remove, validate):
+        """
+        Returns a map between the set of original ids of the remaining nodes in
+        the original graph and their new ids.
+        """
+        n_nodes = self.n_nodes        
+        ex_set = set()
+        for n in nodes_to_remove:
+            if n in ex_set:
+                if validate:
+                    raise ValueError('Attempting to remove a node twice.')
+                continue
+            if n < 0 or n >= n_nodes:
+                if validate:
+                    raise ValueError('Node id {} is out of bounds.'.format(n))
+                continue
+            ex_set.add(n)
+        new_id = 0
+        node_map = {}
+        for i in range(n_nodes):
+            if i in ex_set:
+                continue
+            node_map[i] = new_id
+            new_id += 1
+        return node_map
+
+    def _sg_build_new_adj_list(self, node_map):
+        """
+        Builds the new adjacency list for the subgraph according to the
+        node id map.
+        """
+        if node_map is None or len(node_map) == self.n_nodes:
+            # No node is removed. Simply return a copy.
+            adj_list = [x.copy() for x in self._adj_list]
+        else:
+            # Need some adjustments
+            adj_list = [None] * len(node_map)
+            for old_id, new_id in node_map.items():
+                new_dict = {}
+                for nb, e in self._adj_list[old_id].items():
+                    if nb in node_map:
+                        new_dict[node_map[nb]] = e
+                adj_list[new_id] = new_dict
+        return adj_list
+
+    def _sg_remove_edges(self, adj_list, node_map, edges_to_remove, validate):
+        """
+        Remove edges.
+        """
+        # We have to keep in mind that the dictionary keys in the new adj_list
+        # have been adjusted, while edges_to_remove still uses node ids from the
+        # original graph.
+        if edges_to_remove is None:
+            return
+        n_nodes = self.n_nodes
+        for e in edges_to_remove:
+            # Validate
+            if e[0] < 0 or e[0] >= n_nodes or e[1] not in self._adj_list[e[0]]:
+                if validate:
+                    raise ValueError('Edge {}-{} does not exist in the original graph.'.format(e[0], e[1]))
+                continue
+            # Remove this edge
+            if node_map is None:
+                new_id_a = e[0]
+                new_id_b = e[1]
+            else:
+                # e[0] and e[1] correspond to old node ids
+                if e[0] in node_map and e[1] in node_map:
+                    new_id_a = node_map[e[0]]
+                    new_id_b = node_map[e[1]]
+                else:
+                    # This edge no longer exists
+                    continue
+            if new_id_b not in adj_list[new_id_a]:
+                if validate:
+                    raise ValueError('Edge {}-{} is already removed.'.format(e[0], e[1]))
+                continue
+            del adj_list[new_id_a][new_id_b]
+            # Do not forget self-loops
+            if not self.directed and new_id_a != new_id_b:
+                del adj_list[new_id_b][new_id_a]
+    
+    def _sg_slice_node_data(self, node_map):
+        """
+        Prepare the node data for the subgraph.
+        """
+        # We will just do a shallow copy here.
+        if node_map is None:
+            # Nodes remain unchanged.
+            return self._node_attributes, self._node_labels
+        
         try:
             node_attributes = self._node_attributes
         except AttributeError:
@@ -608,29 +678,20 @@ class GraphDataset:
             node_labels = self._node_labels
         except AttributeError:
             node_labels = None
-        if n_nodes_remaining != n_nodes:
-            if node_attributes is not None:
-                new_node_attributes = [None] * n_nodes_remaining
-                for old_i, new_i in node_map.items():
-                    new_node_attributes[new_i] = node_attributes[old_i]
-            else:
-                new_node_attributes = None
-            
-            if node_labels is not None:
-                new_node_labels = [None] * n_nodes_remaining
-                for old_i, new_i in node_map.items():
-                    new_node_labels[new_i] = node_labels[old_i]
-            else:
-                new_node_labels = None
+        if node_attributes is not None:
+            new_node_attributes = [None] * len(node_map)
+            for old_i, new_i in node_map.items():
+                new_node_attributes[new_i] = node_attributes[old_i]
         else:
-            new_node_attributes = node_attributes
-            new_node_labels = node_labels
+            new_node_attributes = None
         
-        sg = GraphDataset(adj_list=adj_list, weighted=self.weighted,
-                          directed=self.directed, name=name,
-                          node_attributes=new_node_attributes,
-                          node_labels=new_node_labels)
-        return sg
+        if node_labels is not None:
+            new_node_labels = [None] * len(node_map)
+            for old_i, new_i in node_map.items():
+                new_node_labels[new_i] = node_labels[old_i]
+        else:
+            new_node_labels = None
+        return new_node_attributes, new_node_labels
         
     def _process_nodes_input_for_subgraph(self, nodes, validate):
         # Validate first
