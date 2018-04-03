@@ -737,12 +737,21 @@ class GraphDataset:
             # Add nodes
             for i in range(self.n_nodes):
                 G.add_node(i)
-            if self._node_attributes is not None:
+            # Copy node data
+            try:
+                node_attributes = self._node_attributes
+            except AttributeError:
+                node_attributes = None
+            if node_attributes is not None:
                 for i in range(self.n_nodes):
-                    G.nodes[i]['attributes'] = self._node_attributes[i]
-            if self._node_labels is not None:
+                    G.nodes[i]['attributes'] = node_attributes[i]
+            try:
+                node_labels = self._node_labels
+            except AttributeError:
+                node_labels = None
+            if node_labels is not None:
                 for i in range(self.n_nodes):
-                    G.nodes[i]['label'] = self._node_labels[i]
+                    G.nodes[i]['label'] = node_labels[i]
             # Add edges
             for e in self.get_edge_iter(True):
                 if e[3] is not None:
@@ -829,4 +838,8 @@ class MultiGraphDataset:
             return self._graphs[key], None
 
     def summary(self):
-        return '{0}: n_graphs={1}'.format(self.name, self.n_graphs)
+        return '{0}: n_graphs={1}, n_classes={2}, avg_n_nodes={3:.2f}, avg_n_edges={4:.2f}'.format(
+            self.name, self.n_graphs, self.n_classes,
+            np.mean([g.n_nodes for g in self._graphs]),
+            np.mean([g.n_edges for g in self._graphs])
+        )
