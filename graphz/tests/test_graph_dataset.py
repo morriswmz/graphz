@@ -4,6 +4,15 @@ from graphz.dataset import GraphDataset
 
 class TestCreation(unittest.TestCase):
 
+    def setUp(self):
+        # This is NOT symmetric.
+        self.sample_A = np.matrix([
+            [1.0, 0.1, 0.0, 0.3],
+            [0.7, 0.0, 0.0, 0.4],
+            [0.0, 0.0, 0.0, 0.9],
+            [0.5, 0.6, 0.8, 0.0]
+        ])
+
     def test_from_simple_edge_list(self):
         edges = [(0, 0), (0, 1), (0, 2), (0, 3), (3, 4)]
         g = GraphDataset.from_edges(n_nodes=5, edges=edges, name='GraphX')
@@ -13,6 +22,37 @@ class TestCreation(unittest.TestCase):
         self.assertEqual(g.n_nodes, 5)
         self.assertEqual(g.n_edges, 5)
         self.assertSetEqual(set(g.get_edge_iter()), set(map(lambda e : (e[0], e[1], 1), edges)))
+
+    def test_from_adj_mat_dense_undirected_unweighted(self):
+        node_attrs = ['a', 'b', 'c', 'd']
+        node_labels = [1, 2, 4, 5]
+        edges_expected = [(0, 0, 1), (0, 1, 1), (0, 3, 1), (1, 3, 1), (2, 3, 1)]
+        g = GraphDataset.from_adj_mat(self.sample_A, directed=False, weighted=False,
+            name='Unweighted', node_attributes=node_attrs, node_labels=node_labels)
+        self.assertEqual(g.name, 'Unweighted')
+        self.assertSetEqual(set(g.get_edge_iter()), set(edges_expected))
+        self.assertListEqual(list(g.node_attributes), node_attrs)
+        self.assertListEqual(list(g.node_labels), node_labels)
+    
+    def test_from_adj_mat_dense_undirected_weighted(self):
+        edges_expected = [(0, 0, 1.0), (0, 1, 0.1), (0, 3, 0.3), (1, 3, 0.4), (2, 3, 0.9)]
+        g = GraphDataset.from_adj_mat(self.sample_A, directed=False, weighted=True, name='Weighted')
+        self.assertEqual(g.name, 'Weighted')
+        self.assertSetEqual(set(g.get_edge_iter()), set(edges_expected))
+
+    def test_from_adj_mat_dense_directed_unweighted(self):
+        edges_expected = [(0, 0, 1), (0, 1, 1), (0, 3, 1), (1, 3, 1), (2, 3, 1),
+                          (1, 0, 1), (3, 0, 1), (3, 1, 1), (3, 2, 1)]
+        g = GraphDataset.from_adj_mat(self.sample_A, directed=True, weighted=False, name='Unweighted')
+        self.assertEqual(g.name, 'Unweighted')
+        self.assertSetEqual(set(g.get_edge_iter()), set(edges_expected))
+
+    def test_from_adj_mat_dense_directed_weighted(self):
+        edges_expected = [(0, 0, 1.0), (0, 1, 0.1), (0, 3, 0.3), (1, 3, 0.4), (2, 3, 0.9),
+                          (1, 0, 0.7), (3, 0, 0.5), (3, 1, 0.6), (3, 2, 0.8)]
+        g = GraphDataset.from_adj_mat(self.sample_A, directed=True, weighted=True, name='Weighted')
+        self.assertEqual(g.name, 'Weighted')
+        self.assertSetEqual(set(g.get_edge_iter()), set(edges_expected))
 
 class TestViews(unittest.TestCase):
 

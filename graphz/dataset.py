@@ -1,6 +1,9 @@
+import math
 import numpy as np
 from scipy import sparse as sp
 import copy
+import warnings
+import itertools
 from collections import namedtuple, defaultdict
 from graphz.view import DictionaryView, ListView, AdjacencyListView
 try:
@@ -29,7 +32,13 @@ def check_node_index(nid, n_nodes):
 def merge_edge(na, nb, eia, eib):
     pass
 
-def build_adj_list_undirected(n_nodes, edges, weighted=False, has_data=False):
+def edges_to_adj_list(n_nodes, edges, weighted=False, directed=False, has_data=False):
+    if directed:
+        return _edges_to_adj_list_directed(n_nodes, edges, weighted, has_data)
+    else:
+        return _edges_to_adj_list_undirected(n_nodes, edges, weighted, has_data)
+
+def _edges_to_adj_list_undirected(n_nodes, edges, weighted=False, has_data=False):
     """
     Builds a adjacency list from an edge list for an undirected graph.
 
@@ -108,7 +117,7 @@ def build_adj_list_undirected(n_nodes, edges, weighted=False, has_data=False):
                 adj_list[nb][na] = UW_NA_EDGE_INFO
     return adj_list
 
-def build_adj_list_directed(n_nodes, edges, weighted=False, has_data=False):
+def _edges_to_adj_list_directed(n_nodes, edges, weighted=False, has_data=False):
     """
     Builds a adjacency list from an edge list for a directed graph.
 
@@ -223,6 +232,64 @@ def enumerate_edges_directed(adj_list, data=False):
             for nb, ei in l.items():
                 yield (na, nb, ei.weight)
 
+def _adj_mat_to_list_dense(a, weighted, directed):
+    """
+    Constructs an adjacency list from a sparse matrix.
+    """
+    n_nodes = a.shape[0]
+    adj_list = [{} for i in range(n_nodes)]
+    if directed:
+        for i in range(n_nodes):
+            for j in range(n_nodes):
+                if math.isnan(a[i, j]):
+                    raise ValueError('Weight cannot be NaN.')
+                if a[i, j] != 0:
+                    adj_list[i][j] = EdgeInfo(a[i, j], None) if weighted else UW_NA_EDGE_INFO
+    else:
+        for i in range(n_nodes):
+            for j in range(i, n_nodes):
+                if math.isnan(a[i, j]):
+                    raise ValueError('Weight cannot be NaN.')
+                if a[i, j] != 0:
+                    e = EdgeInfo(a[i, j], None) if weighted else UW_NA_EDGE_INFO
+                    adj_list[i][j] = e
+                    if i != j:
+                        adj_list[j][i] = e
+    # Needs to check every element.
+    return adj_list
+
+def _adj_mat_to_list_sparse(a, weighted, directed):
+    """
+    Constructs an adjacency list from a sparse matrix.
+    """
+    # Convert to COO matrix.
+    if not sp.isspmatrix_coo(a):
+        a = a.tocoo()
+    # Now we can iterate the COO matrix as an edge list.
+    edges = zip(a.row, a.col, a.data)
+    if not directed:
+        # Skips the lower triangular part.
+        edges = filter(lambda e : e[0] <= e[1], edges)
+    return edges_to_adj_list(a.shape[0], edges, weighted, directed, False)
+
+def adj_mat_to_adj_list(a, weighted, directed):
+    """
+    Constructs an adjacency list from an adjacency matrix.
+
+    :param a: A 2D numpy array or a scipy sparse matrix.
+    :param weighted: Specifies whether the resulting adjacency list will be
+    weighted. If set to False, non-zero weights will be replaced with ones.
+    :param directed: Specifies whether the matrix a is considered as an
+    adjacency matrix of a directed graph. If set to False, only the upper
+    triangular part of a will be used.
+    """
+    if a.shape[0] != a.shape[1]:
+        raise ValueError('Square matrix expected.')
+    if sp.issparse(a):
+        return _adj_mat_to_list_sparse(a, weighted, directed)
+    else:
+        return _adj_mat_to_list_dense(a, weighted, directed)
+
 class GraphDataset:
     """
     Represents a graph dataset. Suitable for experiments using a single graph,
@@ -281,10 +348,23 @@ class GraphDataset:
         # node_id -> {neighbor_id : (weight, data)}
         # For undirected graphs, weights are always ones.
         # Each element in the adjacency list is a dictionary.
-        if directed:
-            adj_list = build_adj_list_directed(n_nodes, edges, weighted, has_edge_data)
-        else:
-            adj_list = build_adj_list_undirected(n_nodes, edges, weighted, has_edge_data)
+        adj_list = edges_to_adj_list(n_nodes, edges, weighted, directed, has_edge_data)
+        return cls(adj_list=adj_list, weighted=weighted, directed=directed, **kwargs)
+
+    @classmethod
+    def from_adj_mat(cls, a, weighted=True, directed=True, **kwargs):
+        """
+        Constructs a graph dataset from a adjacency matrix.
+
+        :param a: Adjacency matrix.
+        
+        :param weighted: If set to False, non-zero weights in the adjacency
+        matrix will be replaced with ones. Default value is True.
+
+        :param directed: If set to False, only the upper triangular part of the
+        adjacency matrix will be considered. Default value is True.
+        """
+        adj_list = adj_mat_to_adj_list(a, weighted, directed)
         return cls(adj_list=adj_list, weighted=weighted, directed=directed, **kwargs)
 
     @property

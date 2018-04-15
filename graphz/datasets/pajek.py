@@ -1,6 +1,6 @@
 from graphz.dataset import GraphDataset
 from graphz.utils import download_file
-from graphz.reader import from_pajek
+from graphz.io.pajek import from_pajek
 from graphz.settings import get_setting
 
 def load_usair97(data_src=None, ignore_weights=False):
