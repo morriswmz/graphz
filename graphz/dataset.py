@@ -805,6 +805,34 @@ class GraphDataset:
                          node_labels=self._node_labels)
         return g
 
+    def to_compressed_arrays(self):
+        """
+        Converts to compressed numpy arrays for cpp routines.
+        """
+        m = sum([len(x) for x in self._adj_list])
+        neighbors = np.zeros((m,), np.int32)
+        offsets = np.zeros((self.n_nodes + 1,), np.int32)
+        if self.weighted:
+            weights = np.zeros(neighbors.shape, np.float64)
+            offset = 0
+            for na, nbh in enumerate(self._adj_list):
+                offsets[na] = offset
+                for nb, ei in nbh.items():
+                    neighbors[offset] = nb
+                    weights[offset] = ei.weight
+                    offset = offset + 1
+            offsets[self.n_nodes] = offset
+        else:
+            weights = None
+            offset = 0
+            for na, nbh in enumerate(self._adj_list):
+                offsets[na] = offset
+                for nb, ei in nbh.items():
+                    neighbors[offset] = nb
+                    offset = offset + 1
+            offsets[self.n_nodes] = offset
+        return neighbors, offsets, weights
+
     def networkx(self):
         """
         Converts to networkx's graph.

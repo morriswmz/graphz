@@ -14,7 +14,7 @@ def laplacian_eigenmaps(graph, n_components=2):
         raise ValueError('Graph should be undirected.')
     if n_components < 0 or n_components > graph.n_nodes:
         raise ValueError('Number of components must be positive and less than the number of nodes.')
-    L = g.get_laplacian(normalize=True)
+    L = graph.get_laplacian(normalize=True)
     l, v = np.linalg.eig(L)
     ind = np.argsort(np.abs(l))
     return v[:, ind[1:1+n_components]]
